@@ -1,8 +1,8 @@
 {
   "name": "lingodev-assistant",
   "displayName": "LingoDev Assistant",
-  "description": "AI-powered localization helper for developers",
-  "version": "0.0.1",
+  "description": "AI-powered localization helper with Lingo CLI, SDK, MCP, and API integration",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.106.0"
   },
@@ -13,7 +13,10 @@
   "activationEvents": [
     "onCommand:lingodev-assistant.testActivation",
     "onCommand:lingodev-assistant.showSidebar",
-    "onCommand:lingodev-assistant.extractString"
+    "onCommand:lingodev-assistant.extractString",
+    "onCommand:lingodev-assistant.showPreview",
+    "onCommand:lingodev-assistant.showAISuggestions",
+    "onCommand:lingodev-assistant.syncTeam"
   ],
   "contributes": {
     "commands": [
@@ -28,8 +31,58 @@
       {
         "command": "lingodev-assistant.extractString",
         "title": "Extract Selected String"
+      },
+      {
+        "command": "lingodev-assistant.showPreview",
+        "title": "Show Live Translation Preview"
+      },
+      {
+        "command": "lingodev-assistant.showAISuggestions",
+        "title": "Show AI i18n Suggestions"
+      },
+      {
+        "command": "lingodev-assistant.syncTeam",
+        "title": "Sync with Team (Lingo API)"
+      },
+      {
+        "command": "lingodev-assistant.resolveConflicts",
+        "title": "Resolve Translation Conflicts"
+      },
+      {
+        "command": "lingodev-assistant.showTeamActivity",
+        "title": "Show Team Activity"
       }
-    ]
+    ],
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "lingodev-sidebar",
+          "name": "🌍 LingoDev Assistant"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "lingodev-sidebar",
+        "contents": "No translations yet. [Extract a string](command:lingodev-assistant.extractString) to get started with Lingo!"
+      }
+    ],
+    "configuration": {
+      "title": "LingoDev Assistant",
+      "properties": {
+        "lingodevAssistant.enableInlineTranslations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show translations inline in code"
+        },
+        "lingodevAssistant.autoSyncWithTeam": {
+          "type": "boolean", 
+          "default": false,
+          "description": "Automatically sync translations with team via Lingo API"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
