@@ -23,9 +23,8 @@ async function runLingoAndUpdateSidebar(selectedText: string) {
         throw new Error('No workspace folder found');
     }
 
-    console.log('🔄 Starting Lingo CLI...');
     const command = `npx lingo.dev@latest run`;
-    
+
     try {
         const { stdout, stderr } = await execAsync(command, {
             cwd: workspaceFolder,
@@ -33,15 +32,11 @@ async function runLingoAndUpdateSidebar(selectedText: string) {
         });
 
         console.log('✅ Lingo CLI stdout:', stdout);
-        if (stderr) {
-            console.warn('⚠️ Lingo CLI stderr:', stderr);
-        }
+        if (stderr) console.warn('⚠️ Lingo CLI stderr:', stderr);
 
         vscode.window.showInformationMessage('✅ Localization pipeline completed!');
 
-        // Update all features with new translations
         await updateAllFeatures(workspaceFolder, selectedText);
-        
     } catch (err: any) {
         console.error('❌ Error running Lingo CLI:', err);
         vscode.window.showErrorMessage(`Localization error: ${err.message}`);
@@ -51,24 +46,21 @@ async function runLingoAndUpdateSidebar(selectedText: string) {
 
 async function updateAllFeatures(workspaceFolder: string, selectedText: string) {
     try {
-        // Read translation files
         const enFile = path.join(workspaceFolder, 'i18n', 'en.json');
         const esFile = path.join(workspaceFolder, 'i18n', 'es.json');
-        
+
         const enContent = await fs.readFile(enFile, 'utf-8');
         const esContent = await fs.readFile(esFile, 'utf-8');
-        
+
         const enTranslations: Record<string, string> = JSON.parse(enContent);
         const esTranslations: Record<string, string> = JSON.parse(esContent);
 
-        // Create display strings for sidebar
         const displayStrings: string[] = [];
         for (const [key, enText] of Object.entries(enTranslations)) {
             const esText = esTranslations[key] || '[Not translated]';
             displayStrings.push(`EN: ${enText} → ES: ${esText}`);
         }
 
-        // Update sidebar
         if (SidebarPanel.hasCurrentPanel()) {
             SidebarPanel.safePostMessage({
                 command: 'addMultipleStrings',
@@ -77,13 +69,11 @@ async function updateAllFeatures(workspaceFolder: string, selectedText: string) 
             vscode.window.showInformationMessage(`📊 Showing ${displayStrings.length} translations in sidebar`);
         }
 
-        // Update inline translations
         const editor = vscode.window.activeTextEditor;
         if (editor && inlineTranslationProvider) {
             inlineTranslationProvider.updateInlineTranslations(editor);
         }
 
-        // Show AI suggestions for the selected text
         if (aiSuggestionProvider && selectedText) {
             const suggestions = await aiSuggestionProvider.getAISuggestions(selectedText);
             vscode.window.showInformationMessage('🤖 AI Suggestions Available - Check output panel');
@@ -97,19 +87,15 @@ async function updateAllFeatures(workspaceFolder: string, selectedText: string) 
 
 async function initializeLingo(workspaceFolder: string) {
     try {
-        console.log('🔄 Initializing Lingo...');
         const { stdout, stderr } = await execAsync('npx lingo.dev@latest init -y', {
             cwd: workspaceFolder,
             maxBuffer: 1024 * 1024
         });
-        
+
         console.log('✅ Lingo init stdout:', stdout);
-        if (stderr) {
-            console.warn('⚠️ Lingo init stderr:', stderr);
-        }
-        
+        if (stderr) console.warn('⚠️ Lingo init stderr:', stderr);
+
         vscode.window.showInformationMessage('✅ Lingo initialized successfully!');
-        
     } catch (err: any) {
         vscode.window.showErrorMessage(`❌ Failed to initialize Lingo: ${err.message}`);
         throw err;
@@ -125,120 +111,72 @@ export function activate(context: vscode.ExtensionContext) {
         return;
     }
 
-    // Initialize providers
     inlineTranslationProvider = new InlineTranslationProvider(workspaceFolder);
     aiSuggestionProvider = new AISuggestionProvider(workspaceFolder);
     teamCollaboration = new TeamCollaboration(workspaceFolder);
 
-    // Register Sidebar Panel Provider
     const sidebarProvider = new SidebarPanel(context.extensionUri);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(SidebarPanel.viewType, sidebarProvider)
     );
 
-    // Register commands
     const commands = [
-        // Existing commands
         vscode.commands.registerCommand('lingodev-assistant.testActivation', () => {
             vscode.window.showInformationMessage('🎉 LingoDev Assistant Test Working!');
         }),
-
         vscode.commands.registerCommand('lingodev-assistant.showSidebar', () => {
             SidebarPanel.createOrShow(context.extensionUri);
         }),
-
         vscode.commands.registerCommand('lingodev-assistant.extractString', async () => {
             const editor = vscode.window.activeTextEditor;
-            if (!editor) {
-                vscode.window.showErrorMessage('❌ No active editor found!');
-                return;
-            }
+            if (!editor) return vscode.window.showErrorMessage('❌ No active editor found!');
 
-            const selection = editor.selection;
-            const text = editor.document.getText(selection);
-            if (!text) {
-                vscode.window.showWarningMessage('⚠️ No text selected!');
-                return;
-            }
-
-            console.log('🔍 Extracting string:', text);
+            const text = editor.document.getText(editor.selection);
+            if (!text) return vscode.window.showWarningMessage('⚠️ No text selected!');
 
             const lingoConfigPath = path.join(workspaceFolder, 'i18n.json');
-            try {
-                await fs.access(lingoConfigPath);
-                console.log('✅ Lingo config found');
-            } catch {
+            try { await fs.access(lingoConfigPath); }
+            catch {
                 const choice = await vscode.window.showWarningMessage(
-                    'Lingo not initialized. Would you like to initialize it?',
-                    'Yes', 'No'
+                    'Lingo not initialized. Initialize now?', 'Yes', 'No'
                 );
-                
-                if (choice === 'Yes') {
-                    await initializeLingo(workspaceFolder);
-                } else {
-                    return;
-                }
+                if (choice === 'Yes') await initializeLingo(workspaceFolder);
+                else return;
             }
 
-            try {
-                await runLingoAndUpdateSidebar(text);
-            } catch (err: any) {
-                console.error('❌ Error in extract command:', err);
-            }
+            try { await runLingoAndUpdateSidebar(text); } 
+            catch (err) { console.error('❌ Error in extract command:', err); }
         }),
-
-        // NEW: Live Preview Command
         vscode.commands.registerCommand('lingodev-assistant.showPreview', () => {
             PreviewPanel.createOrShow(context.extensionUri, workspaceFolder);
         }),
-
-        // NEW: AI Suggestions Command
         vscode.commands.registerCommand('lingodev-assistant.showAISuggestions', async () => {
             if (aiSuggestionProvider) {
-                const patterns = await aiSuggestionProvider.provideI18nPatterns();
+                const patterns: string[] = await aiSuggestionProvider.provideI18nPatterns();
                 vscode.window.showInformationMessage('🤖 Lingo AI Best Practices:');
-                patterns.forEach(pattern => {
-                    console.log(`   ${pattern}`);
-                });
+                patterns.forEach((pattern: string) => console.log(`   ${pattern}`));
             }
         }),
-
-        // NEW: Team Sync Command
         vscode.commands.registerCommand('lingodev-assistant.syncTeam', async () => {
             if (teamCollaboration) {
                 await teamCollaboration.syncWithTeam();
-                // Refresh all features after sync
                 const editor = vscode.window.activeTextEditor;
-                if (editor) {
-                    const selection = editor.selection;
-                    const text = editor.document.getText(selection);
-                    await updateAllFeatures(workspaceFolder, text || '');
-                }
+                if (editor) await updateAllFeatures(workspaceFolder, editor.document.getText(editor.selection) || '');
             }
         }),
-
-        // NEW: Resolve Conflicts Command
         vscode.commands.registerCommand('lingodev-assistant.resolveConflicts', async () => {
-            if (teamCollaboration) {
-                await teamCollaboration.resolveConflicts();
-            }
+            if (teamCollaboration) await teamCollaboration.resolveConflicts();
         }),
-
-        // NEW: Show Team Activity Command
         vscode.commands.registerCommand('lingodev-assistant.showTeamActivity', async () => {
-            if (teamCollaboration) {
-                await teamCollaboration.showTeamActivity();
-            }
+            if (teamCollaboration) await teamCollaboration.showTeamActivity();
         })
     ];
 
-    commands.forEach(command => context.subscriptions.push(command));
+    commands.forEach(cmd => context.subscriptions.push(cmd));
 
-    // Activate Hardcoded String Diagnostics
     const stringDiagnostics = new StringDiagnosticProvider();
     stringDiagnostics.activate(context);
 
-    // Register Quick Fix / Code Action Provider
     const codeActionProvider = vscode.languages.registerCodeActionsProvider(
         ['javascript', 'typescript'],
         new StringCodeActionProvider(),
@@ -246,7 +184,6 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(codeActionProvider);
 
-    // Update inline translations when active editor changes
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
             if (editor && inlineTranslationProvider) {
@@ -255,7 +192,6 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Initial update
     const editor = vscode.window.activeTextEditor;
     if (editor && inlineTranslationProvider) {
         inlineTranslationProvider.updateInlineTranslations(editor);
@@ -263,8 +199,6 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-    if (inlineTranslationProvider) {
-        inlineTranslationProvider.dispose();
-    }
+    if (inlineTranslationProvider) inlineTranslationProvider.dispose();
     console.log('🔴 LingoDev Assistant extension deactivated');
 }
