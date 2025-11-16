@@ -11,51 +11,75 @@
   ],
   "main": "./out/extension.js",
   "activationEvents": [
-    "onCommand:lingodev-assistant.testActivation",
-    "onCommand:lingodev-assistant.showSidebar",
-    "onCommand:lingodev-assistant.extractString",
-    "onCommand:lingodev-assistant.showPreview",
-    "onCommand:lingodev-assistant.showAISuggestions",
-    "onCommand:lingodev-assistant.syncTeam",
-    "onCommand:lingodev-assistant.resolveConflicts",
-    "onCommand:lingodev-assistant.showTeamActivity",
+    "onCommand:lingoai.extractStrings",
+    "onCommand:lingoai.showAISuggestions",
+    "onCommand:lingoai.syncWithTeam",
+    "onCommand:lingoai.liveTranslationPreview",
+    "onCommand:lingoai.resolveConflicts",
+    "onCommand:lingoai.teamActivity",
     "onView:lingodev-sidebar"
   ],
   "contributes": {
     "commands": [
       {
-        "command": "lingodev-assistant.testActivation",
-        "title": "Test LingoDev Activation"
+        "command": "lingoai.extractStrings",
+        "title": "Extract Strings",
+        "category": "Lingo AI"
       },
       {
-        "command": "lingodev-assistant.showSidebar",
-        "title": "Show LingoDev Sidebar"
+        "command": "lingoai.showAISuggestions",
+        "title": "Show AI i18n Suggestions",
+        "category": "Lingo AI"
       },
       {
-        "command": "lingodev-assistant.extractString",
-        "title": "Extract Selected String"
+        "command": "lingoai.syncWithTeam",
+        "title": "Sync with Team",
+        "category": "Lingo AI"
       },
       {
-        "command": "lingodev-assistant.showPreview",
-        "title": "Show Live Translation Preview"
+        "command": "lingoai.liveTranslationPreview",
+        "title": "Live Translation Preview",
+        "category": "Lingo AI"
       },
       {
-        "command": "lingodev-assistant.showAISuggestions",
-        "title": "Show AI i18n Suggestions"
+        "command": "lingoai.resolveConflicts",
+        "title": "Resolve Translation Conflicts",
+        "category": "Lingo AI"
       },
       {
-        "command": "lingodev-assistant.syncTeam",
-        "title": "Sync with Team (Lingo API)"
-      },
-      {
-        "command": "lingodev-assistant.resolveConflicts",
-        "title": "Resolve Translation Conflicts"
-      },
-      {
-        "command": "lingodev-assistant.showTeamActivity",
-        "title": "Show Team Activity"
+        "command": "lingoai.teamActivity",
+        "title": "Team Activity",
+        "category": "Lingo AI"
       }
     ],
+    "menus": {
+      "command-palette": [
+        {
+          "command": "lingoai.extractStrings",
+          "when": "true"
+        },
+        {
+          "command": "lingoai.showAISuggestions",
+          "when": "true"
+        },
+        {
+          "command": "lingoai.syncWithTeam",
+          "when": "true"
+        },
+        {
+          "command": "lingoai.liveTranslationPreview",
+          "when": "true"
+        },
+        {
+          "command": "lingoai.resolveConflicts",
+          "when": "true"
+        },
+        {
+          "command": "lingoai.teamActivity",
+          "when": "true"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -77,7 +101,7 @@
     "viewsWelcome": [
       {
         "view": "lingodev-sidebar",
-        "contents": "No translations yet. [Extract a string](command:lingodev-assistant.extractString) to get started with Lingo!"
+        "contents": "No translations yet. [Extract a string](command:lingoai.extractStrings) to get started with Lingo!"
       }
     ],
     "configuration": {
