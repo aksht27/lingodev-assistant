@@ -1,71 +1,88 @@
-# lingodev-assistant README
+# GlobalDev Assistant
 
-This is the README for your extension "lingodev-assistant". After writing up a brief description, we recommend including the following sections.
+![VS Code](https://img.shields.io/badge/VS%20Code-%3E%3D1.106.0-blue.svg) ![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![LingoHack25](https://img.shields.io/badge/LingoHack25-WeMakeDevs-orange.svg)
+
+**AI-powered VS Code extension that automates localization directly in your workflow.**
+
+Built for [LingoHack25](https://www.wemakedevs.org/hackathons/lingohack25) • Integrates Lingo CLI, SDK, and MCP for real-time i18n assistance without leaving your IDE.
+
+## The Problem
+
+Developers hardcode strings, then spend 7-16 hours manually extracting, creating keys, and resolving merge conflicts when adding i18n.
+
+**GlobalDev Assistant automates this in 5-10 minutes.**
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+- 🔍 **Real-time Detection** — Auto-highlight hardcoded strings (Lingo MCP)
+- ⚡ **One-click Extraction** — Move to Lingo CLI managed files instantly
+- 🤖 **AI Translation** — Context-aware translation via Lingo CLI/SDK
+- 🌐 **Live Preview** — See translations in browser without leaving IDE
+- 🔄 **CI/CD Ready** — Automated workflows with GitHub Actions/GitLab
 
-For example if there is an image subfolder under your extension project workspace:
+## Quick Start
 
-\!\[feature X\]\(images/feature-x.png\)
+```bash
+# 1. Install extension
+code --install-extension lingodev.globaldev-assistant
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+# 2. Initialize Lingo in your project
+npx lingo.dev@latest init
 
-## Requirements
+# 3. Extract strings
+# Select text → Ctrl+Shift+P → "GlobalDev: Extract Selected String"
+```
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+**Example:**
+```typescript
+// Before
+const greeting = "Hello, welcome!";
 
-## Extension Settings
+// After
+const greeting = t('welcome_greeting');
+```
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+**Supported:** JavaScript, TypeScript, JSX, TSX • React, Vue, Angular, Next.js, Nuxt.js • react-i18next, vue-i18n, i18next • JSON, YAML
 
-For example:
+## How It Works
 
-This extension contributes the following settings:
+**Lingo Products Integrated:**
+- **CLI** — String extraction & file management
+- **SDK** — Runtime translation & live preview
+- **MCP** — AI-powered code analysis
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+```
+Code → Lingo MCP (detect) → Lingo CLI (extract) → Lingo SDK (preview) → CI/CD
+```
 
-## Known Issues
+## Roadmap
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+**Current:** Lingo CLI extraction • MCP detection • SDK preview • AI translation  
+**Next:** CI/CD templates • Multi-IDE support  
+**Future:** [Lingo Compiler](https://lingo.dev/en/compiler) integration for build-time AST compilation (zero-config React i18n)
 
-## Release Notes
+## Hackathon Info
 
-Users appreciate release notes as you update your extension.
+**LingoHack25** by WeMakeDevs • Solo Project by Akshat Gupta • November 2024
 
-### 1.0.0
+| Product | Status | Purpose |
+|---------|--------|----------|
+| Lingo CLI | ✅ Active | String extraction & file management |
+| Lingo SDK | ✅ Active | Live browser preview |
+| Lingo MCP | ✅ Active | AI code analysis |
+| Lingo Compiler | 🔮 Future | Build-time AST compilation |
 
-Initial release of ...
+## License & Support
 
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+MIT License • Built during LingoHack25 hackathon  
+[📚 Docs](https://docs.lingo.dev) • [🐛 Issues](https://github.com/akshatgupta/globaldev-assistant/issues) • [💬 Discord](https://discord.gg/wemakedevs)
 
 ---
 
-## Following extension guidelines
+<div align="center">
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+[⭐ Star on GitHub](https://github.com/akshatgupta/globaldev-assistant) • [🏆 LingoHack25](https://www.wemakedevs.org/hackathons/lingohack25)
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+*Built with ❤️ by Akshat Gupta using Lingo CLI, SDK & MCP*
 
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+</div>
