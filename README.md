@@ -24,7 +24,7 @@ Developers hardcode strings, then spend 7-16 hours manually extracting, creating
 
 ```bash
 # 1. Install extension
-code --install-extension lingodev.globaldev-assistant
+code --install-extension lingodev.lingodev-assistant
 
 # 2. Initialize Lingo in your project
 npx lingo.dev@latest init
@@ -81,7 +81,7 @@ MIT License • Built during LingoHack25 hackathon
 
 <div align="center">
 
-[⭐ Star on GitHub](https://github.com/akshatgupta/globaldev-assistant) • [🏆 LingoHack25](https://www.wemakedevs.org/hackathons/lingohack25)
+[⭐ Star on GitHub](https://github.com/akshatgupta/lingodev-assistant) • [🏆 LingoHack25](https://www.wemakedevs.org/hackathons/lingohack25)
 
 *Built with ❤️ by Akshat Gupta using Lingo CLI, SDK & MCP*
 
