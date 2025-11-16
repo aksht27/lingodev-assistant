@@ -75,13 +75,13 @@ Code → Lingo MCP (detect) → Lingo CLI (extract) → Lingo SDK (preview) → 
 ## License & Support
 
 MIT License • Built during LingoHack25 hackathon  
-[📚 Docs](https://docs.lingo.dev) • [🐛 Issues](https://github.com/akshatgupta/globaldev-assistant/issues) • [💬 Discord](https://discord.gg/wemakedevs)
+[📚 Docs](https://docs.lingo.dev) • [🐛 Issues](https://github.com/aksht27/globaldev-assistant/issues) • [💬 Discord](https://discord.gg/wemakedevs)
 
 ---
 
 <div align="center">
 
-[⭐ Star on GitHub](https://github.com/akshatgupta/lingodev-assistant) • [🏆 LingoHack25](https://www.wemakedevs.org/hackathons/lingohack25)
+[⭐ Star on GitHub](https://github.com/aksht27/lingodev-assistant) • [🏆 LingoHack25](https://www.wemakedevs.org/hackathons/lingohack25)
 
 *Built with ❤️ by Akshat Gupta using Lingo CLI, SDK & MCP*
 
