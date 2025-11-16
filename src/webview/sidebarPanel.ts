@@ -1,21 +1,17 @@
 import * as vscode from 'vscode';
-import { LingoClient } from '../lingoClient'; // Corrected path
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as path from 'path';
+import * as fs from 'fs/promises';
+
+const execAsync = promisify(exec);
 
 interface SidebarMessage {
-  command:
-    | 'addStringToUI'
-    | 'updateStringUI'
-    | 'removeStringUI'
-    | 'alert'
-    | 'copy'
-    | 'edit'
-    | 'remove'
-    | 'addMultipleStrings'
-    | 'testConnection';
-  text?: string;
-  strings?: string[];
-  id?: string;
-  oldText?: string;
+  command: 'generateLocale' | 'copy' | 'edit' | 'remove';
+  target?: string;
+  bucket?: string;
+  key?: string;
+  newValue?: string;
 }
 
 export class SidebarPanel implements vscode.WebviewViewProvider {
@@ -23,29 +19,19 @@ export class SidebarPanel implements vscode.WebviewViewProvider {
   public static currentPanel: SidebarPanel | undefined;
 
   private _view?: vscode.WebviewView;
-  private lingoClient: LingoClient;
+  private workspaceRoot: string;
 
-  constructor(private readonly _extensionUri: vscode.Uri, apiKey: string) {
-    this.lingoClient = new LingoClient(apiKey);
+  constructor(private readonly _extensionUri: vscode.Uri, workspaceRoot: string) {
+    this.workspaceRoot = workspaceRoot;
   }
 
-  // Static method to check if panel exists
-  public static hasCurrentPanel(): boolean {
-    return !!SidebarPanel.currentPanel;
-  }
-
-  // Static method to post message safely
-  public static safePostMessage(message: any): boolean {
-    if (SidebarPanel.currentPanel && SidebarPanel.currentPanel.postMessage) {
-      SidebarPanel.currentPanel.postMessage(message);
-      return true;
-    }
-    return false;
+  public static createOrShow(extensionUri: vscode.Uri, workspaceRoot: string) {
+    vscode.commands.executeCommand('lingodev-sidebar.focus');
   }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
+    _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken
   ) {
     this._view = webviewView;
@@ -56,284 +42,221 @@ export class SidebarPanel implements vscode.WebviewViewProvider {
       localResourceRoots: [this._extensionUri]
     };
 
-    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+    webviewView.webview.html = this._getHtml(webviewView.webview);
 
-    webviewView.webview.onDidReceiveMessage((message: SidebarMessage) => {
-      this._handleMessage(message);
+    webviewView.webview.onDidReceiveMessage(async (message: SidebarMessage) => {
+      switch (message.command) {
+        case 'generateLocale':
+          if (!message.target || !message.bucket) {
+            vscode.window.showErrorMessage('Select both target language and bucket type');
+            return;
+          }
+          await this.generateLocaleFile(message.target, message.bucket);
+          break;
+        case 'copy':
+          if (message.newValue) {
+            await vscode.env.clipboard.writeText(message.newValue);
+            vscode.window.showInformationMessage('Copied to clipboard!');
+          }
+          break;
+        case 'edit':
+          if (message.key && message.newValue && message.target && message.bucket) {
+            await this.updateTranslation(message.target, message.key, message.newValue, message.bucket);
+          }
+          break;
+        case 'remove':
+          if (message.key && message.target && message.bucket) {
+            await this.removeTranslation(message.target, message.key, message.bucket);
+          }
+          break;
+      }
     });
   }
 
-  private async _handleMessage(message: SidebarMessage) {
-    switch (message.command) {
-      case 'alert':
-        vscode.window.showInformationMessage(message.text || '');
-        break;
+  public postMessage(message: any): Thenable<boolean> | undefined {
+    if (this._view) {
+      return this._view.webview.postMessage(message);
+    }
+    return undefined;
+  }
 
-      case 'testConnection': {
-        const result = await this.lingoClient.testConnection();
-        this._view?.webview.postMessage({
-          command: 'alert',
-          text: result.ok
-            ? '✅ Lingo connection successful!'
-            : `❌ Lingo connection failed: ${String(result.error)}`
-        });
-        break;
+  private async generateLocaleFile(target: string, bucket: string) {
+    const localeArg = `--target-locale ${target}`;
+    const bucketArg = `--bucket ${bucket}`;
+    const cmd = `npx lingo.dev@latest run ${localeArg} ${bucketArg}`;
+    vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Generating ${target}.${bucket}…`,
+      cancellable: false
+    }, async () => {
+      try {
+        const { stdout, stderr } = await execAsync(cmd, { cwd: this.workspaceRoot });
+        console.log('Lingo CLI stdout:', stdout);
+        if (stderr) console.warn('Lingo CLI stderr:', stderr);
+        await this.loadAndSendStrings(target, bucket);
+        vscode.window.showInformationMessage(`✅ Generated ${target}.${bucket}`);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Error generating locale: ${err.message}`);
+        console.error(err);
+      }
+    });
+  }
+
+  private async loadAndSendStrings(target: string, bucket: string) {
+    const ext = bucket === 'typescript' ? 'ts' : 'json';
+    const localeFile = path.join(this.workspaceRoot, 'i18n', `${target}.${ext}`);
+    try {
+      const bytes = await fs.readFile(localeFile, 'utf-8');
+      let obj: Record<string, any>;
+      if (ext === 'ts') {
+        const mod = await import(/* webpackIgnore */ localeFile);
+        obj = mod.default;
+      } else {
+        obj = JSON.parse(bytes);
       }
 
-      case 'copy':
-        vscode.env.clipboard.writeText(message.text || '');
-        vscode.window.showInformationMessage('Copied to clipboard!');
-        break;
-
-      case 'edit':
-        this._view?.webview.postMessage({
-          command: 'updateStringUI',
-          id: message.id,
-          text: message.text
-        });
-        if (message.oldText && message.text) {
-          const editor = vscode.window.activeTextEditor;
-          if (editor) {
-            const doc = editor.document;
-            const text = doc.getText();
-            const index = text.indexOf(message.oldText);
-            if (index !== -1) {
-              const start = doc.positionAt(index);
-              const end = doc.positionAt(index + message.oldText.length);
-              editor.edit(editBuilder =>
-                editBuilder.replace(new vscode.Range(start, end), message.text!)
-              );
-            }
-          }
-        }
-        break;
-
-      case 'remove':
-        this._view?.webview.postMessage({
-          command: 'removeStringUI',
-          id: message.id
-        });
-        break;
-
-      case 'addStringToUI':
-        this._view?.webview.postMessage({
-          command: 'addStringToUI',
-          text: message.text
-        });
-        break;
-
-      case 'addMultipleStrings':
-        if (message.strings && message.strings.length > 0) {
-          this._view?.webview.postMessage({
-            command: 'addMultipleStrings',
-            strings: message.strings
-          });
-        }
-        break;
-
-      default:
-        console.warn('Unknown sidebar command:', message);
+      const list = Object.entries(obj).map(([key, value]) => ({
+        key,
+        value: String(value)
+      }));
+      this._view?.webview.postMessage({ command: 'setStrings', target, list });
+    } catch (err) {
+      console.error('Failed to load locale file:', err);
+      vscode.window.showErrorMessage(`Failed to read ${target}.${ext}`);
     }
   }
 
-  private _getHtmlForWebview(webview: vscode.Webview): string {
+  private async updateTranslation(target: string, key: string, newValue: string, bucket: string) {
+    const ext = bucket === 'typescript' ? 'ts' : 'json';
+    const localeFile = path.join(this.workspaceRoot, 'i18n', `${target}.${ext}`);
+    const content = await fs.readFile(localeFile, 'utf-8');
+    let obj: any;
+    if (ext === 'ts') {
+      const mod = await import(/* webpackIgnore */ localeFile);
+      obj = mod.default;
+    } else {
+      obj = JSON.parse(content);
+    }
+    obj[key] = newValue;
+
+    let newFile = '';
+    if (ext === 'ts') {
+      newFile = `export default ${JSON.stringify(obj, null, 2)};\n`;
+    } else {
+      newFile = JSON.stringify(obj, null, 2);
+    }
+
+    await fs.writeFile(localeFile, newFile, 'utf-8');
+    await this.loadAndSendStrings(target, bucket);
+  }
+
+  private async removeTranslation(target: string, key: string, bucket: string) {
+    const ext = bucket === 'typescript' ? 'ts' : 'json';
+    const localeFile = path.join(this.workspaceRoot, 'i18n', `${target}.${ext}`);
+    const content = await fs.readFile(localeFile, 'utf-8');
+    let obj: any;
+    if (ext === 'ts') {
+      const mod = await import(/* webpackIgnore */ localeFile);
+      obj = mod.default;
+    } else {
+      obj = JSON.parse(content);
+    }
+
+    delete obj[key];
+
+    let newFile = '';
+    if (ext === 'ts') {
+      newFile = `export default ${JSON.stringify(obj, null, 2)};\n`;
+    } else {
+      newFile = JSON.stringify(obj, null, 2);
+    }
+
+    await fs.writeFile(localeFile, newFile, 'utf-8');
+    await this.loadAndSendStrings(target, bucket);
+  }
+
+  private _getHtml(webview: vscode.Webview): string {
     const nonce = this._getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LingoDev Assistant</title>
-  <style>
-    body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); background-color: var(--vscode-sideBar-background); padding: 10px; margin: 0; }
-    .container { max-width: 100%; }
-    .header { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--vscode-panel-border); }
-    h1 { font-size: 1.2em; margin: 0 0 10px 0; color: var(--vscode-titleBar-activeForeground); }
-    h2 { font-size: 1em; margin: 15px 0 10px 0; color: var(--vscode-descriptionForeground); }
-    .test-button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 8px 12px; border-radius: 2px; cursor: pointer; margin-bottom: 15px; }
-    .test-button:hover { background: var(--vscode-button-hoverBackground); }
-    .status { margin-bottom: 10px; font-style: italic; }
-    .strings-list { list-style: none; padding: 0; margin: 0; }
-    .string-item { padding: 8px 12px; margin: 5px 0; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 3px; word-break: break-word; }
-    .empty-state { text-align: center; padding: 20px; color: var(--vscode-descriptionForeground); font-style: italic; }
-    .button-group { display: flex; gap: 5px; margin-top: 8px; }
-    .button-group button { flex: 1; padding: 4px 8px; border: 1px solid var(--vscode-button-border); background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-radius: 2px; cursor: pointer; font-size: 0.9em; }
-    .button-group button:hover { background: var(--vscode-button-hoverBackground); }
-  </style>
+  <title>LingoDev Sidebar</title>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>🌍 LingoDev Assistant</h1>
-      <p>Extracted & Translated Strings</p>
-    </div>
-
-    <button class="test-button" id="test-connection">Test Connection</button>
-    <div class="status" id="status"></div>
-
-    <h2>Translations:</h2>
-    <div id="strings-container">
-      <div class="empty-state" id="empty-state">No strings yet. Select text in your code and use "Extract Selected String" to see translations here.</div>
-      <ul class="strings-list" id="strings-list" style="display: none;"></ul>
-    </div>
+  <h3>🌍 LingoDev Assistant</h3>
+  <div>
+    <label for="target">Target Language: </label>
+    <select id="target">
+      <option value="es">es</option>
+      <option value="fr">fr</option>
+      <option value="de">de</option>
+    </select>
   </div>
+  <div>
+    <label for="bucket">Format / Bucket: </label>
+    <select id="bucket">
+      <option value="typescript">TypeScript (.ts)</option>
+      <option value="json">JSON (.json)</option>
+    </select>
+  </div>
+  <div style="margin-top: 8px;">
+    <button id="generate">Generate / Refresh</button>
+  </div>
+
+  <h4>Translations:</h4>
+  <ul id="strings-list"></ul>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    document.getElementById("test-connection").addEventListener("click", () => {
-      vscode.postMessage({ command: "testConnection" });
+    document.getElementById('generate')?.addEventListener('click', () => {
+      const target = (document.getElementById('target') as HTMLSelectElement).value;
+      const bucket = (document.getElementById('bucket') as HTMLSelectElement).value;
+      vscode.postMessage({ command: 'generateLocale', target, bucket });
     });
 
-    window.addEventListener("message", event => {
-      const message = event.data;
-      if (message.command === "alert") {
-        const statusEl = document.getElementById("status");
-        statusEl.textContent = message.text;
-      } else if (message.command === "addStringToUI") {
-        addString(message.text);
-      } else if (message.command === "updateStringUI") {
-        updateString(message.id, message.text);
-      } else if (message.command === "removeStringUI") {
-        removeString(message.id);
-      } else if (message.command === "addMultipleStrings") {
-        addMultiple(message.strings);
-      }
-    });
-
-    function generateId() {
-      return 'string-' + Math.random().toString(36).substr(2, 9);
-    }
-
-    function addString(text) {
-      const emptyState = document.getElementById("empty-state");
-      const list = document.getElementById("strings-list");
-      if (emptyState) emptyState.style.display = 'none';
-      if (list) list.style.display = 'block';
-
-      const id = generateId();
-      const li = document.createElement("li");
-      li.className = "string-item";
-      li.id = id;
-
-      const span = document.createElement("span");
-      span.textContent = text;
-
-      const btnGroup = document.createElement("div");
-      btnGroup.className = "button-group";
-
-      const copyBtn = document.createElement("button");
-      copyBtn.textContent = "Copy";
-      copyBtn.onclick = () => vscode.postMessage({ command: "copy", text });
-
-      const editBtn = document.createElement("button");
-      editBtn.textContent = "Edit";
-      editBtn.onclick = () => {
-        const newText = prompt("Edit translation:", text);
-        if (newText !== null) {
-          vscode.postMessage({ command: "edit", id, text: newText, oldText: text });
-        }
-      };
-
-      const removeBtn = document.createElement("button");
-      removeBtn.textContent = "Remove";
-      removeBtn.onclick = () => {
-        if (confirm("Remove this translation?")) {
-          li.remove();
-          vscode.postMessage({ command: "remove", id });
-          if (list.children.length === 0) {
-            emptyState.style.display = 'block';
-            list.style.display = 'none';
-          }
-        }
-      };
-
-      btnGroup.appendChild(copyBtn);
-      btnGroup.appendChild(editBtn);
-      btnGroup.appendChild(removeBtn);
-
-      li.appendChild(span);
-      li.appendChild(btnGroup);
-      list.appendChild(li);
-    }
-
-    function updateString(id, text) {
-      const li = document.getElementById(id);
-      if (li) {
-        const span = li.querySelector("span");
-        if (span) span.textContent = text;
-      }
-    }
-
-    function removeString(id) {
-      const li = document.getElementById(id);
-      if (li) li.remove();
-      const list = document.getElementById("strings-list");
-      const emptyState = document.getElementById("empty-state");
-      if (list && list.children.length === 0 && emptyState) {
-        emptyState.style.display = 'block';
-        list.style.display = 'none';
-      }
-    }
-
-    function addMultiple(strings) {
-      const emptyState = document.getElementById("empty-state");
-      const list = document.getElementById("strings-list");
-      list.innerHTML = '';
-      if (emptyState) emptyState.style.display = 'none';
-      if (list) list.style.display = 'block';
-
-      strings.forEach(text => {
-        const id = generateId();
-        const li = document.createElement("li");
-        li.className = "string-item";
-        li.id = id;
-
-        const span = document.createElement("span");
-        span.textContent = text;
-
-        const btnGroup = document.createElement("div");
-        btnGroup.className = "button-group";
-
-        const copyBtn = document.createElement("button");
-        copyBtn.textContent = "Copy";
-        copyBtn.onclick = () => vscode.postMessage({ command: "copy", text });
-
-        const editBtn = document.createElement("button");
-        editBtn.textContent = "Edit";
-        editBtn.onclick = () => {
-          const newText = prompt("Edit translation:", text);
-          if (newText !== null) {
-            vscode.postMessage({ command: "edit", id, text: newText, oldText: text });
-          }
-        };
-
-        const removeBtn = document.createElement("button");
-        removeBtn.textContent = "Remove";
-        removeBtn.onclick = () => {
-          if (confirm("Remove this translation?")) {
-            li.remove();
-            vscode.postMessage({ command: "remove", id });
-            if (list.children.length === 0) {
-              emptyState.style.display = 'block';
-              list.style.display = 'none';
+    window.addEventListener('message', event => {
+      const msg = event.data;
+      if (msg.command === 'setStrings') {
+        const list = document.getElementById('strings-list');
+        if (!list) return;
+        list.innerHTML = '';
+        msg.list.forEach((item) => {
+          const li = document.createElement('li');
+          li.textContent = item.key + ': ' + item.value;
+          const btnCopy = document.createElement('button');
+          btnCopy.textContent = 'Copy';
+          btnCopy.onclick = () => {
+            vscode.postMessage({ command: 'copy', newValue: item.value });
+          };
+          const btnEdit = document.createElement('button');
+          btnEdit.textContent = 'Edit';
+          btnEdit.onclick = () => {
+            const newValue = prompt('Edit value for ' + item.key, item.value);
+            if (newValue !== null) {
+              vscode.postMessage({ command: 'edit', key: item.key, newValue, target: (document.getElementById('target') as HTMLSelectElement).value, bucket: (document.getElementById('bucket') as HTMLSelectElement).value });
             }
-          }
-        };
+          };
+          const btnRemove = document.createElement('button');
+          btnRemove.textContent = 'Remove';
+          btnRemove.onclick = () => {
+            if (confirm('Remove ' + item.key + '?')) {
+              vscode.postMessage({ command: 'remove', key: item.key, target: (document.getElementById('target') as HTMLSelectElement).value, bucket: (document.getElementById('bucket') as HTMLSelectElement).value });
+            }
+          };
 
-        btnGroup.appendChild(copyBtn);
-        btnGroup.appendChild(editBtn);
-        btnGroup.appendChild(removeBtn);
+          li.appendChild(btnCopy);
+          li.appendChild(btnEdit);
+          li.appendChild(btnRemove);
 
-        li.appendChild(span);
-        li.appendChild(btnGroup);
-        list.appendChild(li);
-      });
-    }
-
-    // Notify extension that sidebar is ready
-    vscode.postMessage({ command: 'alert', text: 'Sidebar ready!' });
+          list.appendChild(li);
+        });
+      }
+    });
   </script>
 </body>
 </html>`;
@@ -344,11 +267,5 @@ export class SidebarPanel implements vscode.WebviewViewProvider {
     return Array.from({ length: 32 }, () =>
       possible.charAt(Math.floor(Math.random() * possible.length))
     ).join('');
-  }
-
-  public postMessage(message: any) {
-    if (this._view) {
-      this._view.webview.postMessage(message);
-    }
   }
 }

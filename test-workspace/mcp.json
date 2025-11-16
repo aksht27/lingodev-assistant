@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lingodotdev": {
+      "command": "npx",
+      "args": ["-y", "lingo.dev", "mcp", "api_b8ry0l456cf13t8xoe6amip4"]
+    }
+  }
+}

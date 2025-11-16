@@ -18,7 +18,8 @@
     "onCommand:lingodev-assistant.showAISuggestions",
     "onCommand:lingodev-assistant.syncTeam",
     "onCommand:lingodev-assistant.resolveConflicts",
-    "onCommand:lingodev-assistant.showTeamActivity"
+    "onCommand:lingodev-assistant.showTeamActivity",
+    "onView:lingodev-sidebar"
   ],
   "contributes": {
     "commands": [
@@ -55,8 +56,17 @@
         "title": "Show Team Activity"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "lingodevContainer",
+          "title": "LingoDev",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "lingodevContainer": [
         {
           "type": "webview",
           "id": "lingodev-sidebar",

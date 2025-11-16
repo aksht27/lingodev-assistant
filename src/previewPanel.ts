@@ -1,14 +1,20 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { LingoDotDevEngine } from 'lingo.dev/sdk';
 
 export class PreviewPanel {
   public static currentPanel: PreviewPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
-  private workspaceFolder: string;
+  private workspaceFolder: vscode.Uri;
+  private sdk: LingoDotDevEngine;
 
-  public static createOrShow(extensionUri: vscode.Uri, workspaceFolder: string): PreviewPanel {
+  public static createOrShow(
+    extensionUri: vscode.Uri,
+    workspaceFolder: vscode.Uri,
+    sdk: LingoDotDevEngine
+  ): PreviewPanel {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
     if (PreviewPanel.currentPanel) {
@@ -20,145 +26,138 @@ export class PreviewPanel {
       'lingodev-preview',
       '🌍 Translation Preview',
       column,
-      {
-        enableScripts: true,
-        localResourceRoots: [extensionUri],
-        retainContextWhenHidden: true,  // Keep state when hidden
-      }
+      { enableScripts: true, localResourceRoots: [extensionUri, workspaceFolder] }
     );
 
-    PreviewPanel.currentPanel = new PreviewPanel(panel, workspaceFolder);
+    PreviewPanel.currentPanel = new PreviewPanel(panel, workspaceFolder, sdk);
     return PreviewPanel.currentPanel;
   }
 
-  private constructor(panel: vscode.WebviewPanel, workspaceFolder: string) {
+  private constructor(panel: vscode.WebviewPanel, workspaceFolder: vscode.Uri, sdk: LingoDotDevEngine) {
     this._panel = panel;
     this.workspaceFolder = workspaceFolder;
+    this.sdk = sdk;
 
-    // When panel is disposed
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    this._panel.onDidChangeViewState(e => {
+      if (e.webviewPanel.visible) this.updatePreview();
+    }, null, this._disposables);
 
-    // When view state changes (visible / hidden)
-    this._panel.onDidChangeViewState(
-      e => {
-        if (e.webviewPanel.visible) {
-          this.updatePreview();
-        }
-      },
-      null,
-      this._disposables
-    );
-
-    // Initially set content
     this.updatePreview();
   }
 
-  private async _getHtmlForWebview(): Promise<string> {
-    const translations = await this.getTranslations();
-    const enTranslations = translations['en'] || {};
+  private async getStaticTranslations(): Promise<Record<string, Record<string, string>>> {
+    const tr: Record<string, Record<string, string>> = {};
+    try {
+      const i18nDir = vscode.Uri.joinPath(this.workspaceFolder, 'test‑workspace', 'i18n');
+      const files = await fs.readdir(i18nDir.fsPath);
+      for (const f of files) {
+        const p = path.join(i18nDir.fsPath, f);
+        if (f.endsWith('.ts')) {
+          const raw = await fs.readFile(p, 'utf-8');
+          const m = raw.match(/export\s+default\s+({[\s\S]*});/);
+          if (m && m[1]) tr[path.basename(f, '.ts')] = JSON.parse(m[1]);
+        } else if (f.endsWith('.json')) {
+          const raw = await fs.readFile(p, 'utf-8');
+          tr[path.basename(f, '.json')] = JSON.parse(raw);
+        }
+      }
+    } catch (e) {
+      console.error('Error reading static translations', e);
+    }
+    return tr;
+  }
 
-    // Build HTML content
+  private async _getHtmlForWebview(): Promise<string> {
+    const staticTrans = await this.getStaticTranslations();
+    const source = staticTrans['en'] || {};
+    const targetLangs = Object.keys(staticTrans).filter(l => l !== 'en');
+
+    // Generate page HTML
+    const sourceHtml = Object.entries(source)
+      .map(([k, v]) => `<div class="item" data-key="${k}">${k}: ${v}</div>`)
+      .join('');
+    const targetOptions = targetLangs.map(l => `<option value="${l}">${l}</option>`).join('');
+
     return `<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Translation Preview</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${this._getNonce()}'; style-src 'unsafe-inline';" />
   <style>
-    body { font-family: sans-serif; padding: 20px; background: #1e1e1e; color: #ddd; }
-    .container { max-width: 800px; margin: 0 auto; }
-    .header { text-align: center; margin-bottom: 20px; }
-    .translation-group { display: flex; gap: 20px; }
-    .lang-section { flex: 1; }
-    .lang-section h2 { margin-bottom: 10px; }
-    .item { margin-bottom: 12px; padding: 8px; background: #252526; border-radius: 4px; cursor: pointer; }
+    body { background: #1e1e1e; color: #ddd; font-family: sans-serif; padding: 20px; }
+    .item { margin: 8px 0; padding: 6px; background: #252526; border-radius: 3px; cursor: pointer; }
     .item:hover { background: #333; }
-    .translation { margin-top: 20px; }
+    select { margin-top: 12px; padding: 4px; }
+    .translation { margin-top: 16px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>🌍 Live Translation Preview</h1>
-      <p>Click on a source string to view translation</p>
-    </div>
+  <h2>Source Strings</h2>
+  ${sourceHtml || '<em>No source strings</em>'}
+  <h2>Translate</h2>
+  <select id="lang">${targetOptions}</select>
+  <div class="translation" id="translated">Select a key and a language</div>
 
-    <div class="translation-group">
-      <div class="lang-section" id="source">
-        <h2>Source (en)</h2>
-        ${Object.entries(enTranslations)
-          .map(([key, value]) => `<div class="item" data-key="${key}">${key}: ${value}</div>`)
-          .join('')}
-      </div>
-
-      <div class="lang-section">
-        <h2>Target</h2>
-        <div class="translation" id="translated">Select a language and a key</div>
-        <select id="target-language">
-          <option value="">Select language</option>
-          ${Object.keys(translations)
-            .filter(lang => lang !== 'en')
-            .map(lang => `<option value="${lang}">${lang}</option>`)
-            .join('')}
-        </select>
-      </div>
-    </div>
-  </div>
-
-  <script>
+  <script nonce="${this._getNonce()}">
     const vscode = acquireVsCodeApi();
-    const translations = ${JSON.stringify(translations)};
+    const translations = ${JSON.stringify(staticTrans)};
     let selectedKey = '';
 
     document.querySelectorAll('.item').forEach(el => {
       el.addEventListener('click', () => {
-        selectedKey = el.getAttribute('data-key') || '';
-        updateTranslation();
+        selectedKey = el.getAttribute('data-key');
+        updateText();
+        document.querySelectorAll('.item').forEach(i => i.style.background = '#252526');
+        el.style.background = '#333';
       });
     });
 
-    document.getElementById('target-language')?.addEventListener('change', () => {
-      updateTranslation();
-    });
+    document.getElementById('lang').addEventListener('change', () => updateText());
 
-    function updateTranslation() {
-      const lang = document.getElementById('target-language').value;
+    async function updateText() {
+      const lang = document.getElementById('lang').value;
       const container = document.getElementById('translated');
-      if (!lang || !selectedKey) {
-        container.textContent = 'Select a language and key';
+      if (!selectedKey) {
+        container.textContent = 'Click a source string first.';
         return;
       }
-      const translation = translations[lang][selectedKey];
-      container.textContent = translation !== undefined ? translation : 'No translation available';
+      if (!lang) {
+        container.textContent = 'Pick a language first.';
+        return;
+      }
+      vscode.postMessage({ command: 'translate', key: selectedKey, lang });
     }
+
+    window.addEventListener('message', event => {
+      const msg = event.data;
+      if (msg.command === 'translated') {
+        document.getElementById('translated').textContent = msg.text;
+      }
+    });
   </script>
 </body>
 </html>`;
   }
 
-  private async getTranslations(): Promise<Record<string, Record<string, string>>> {
-    const i18nDir = path.join(this.workspaceFolder, 'i18n');
-    const result: Record<string, Record<string, string>> = {};
+  public async updatePreview() {
+    this._panel.webview.html = await this._getHtmlForWebview();
 
-    try {
-      const files = await fs.readdir(i18nDir);
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          const lang = path.basename(file, '.json');
-          const content = await fs.readFile(path.join(i18nDir, file), 'utf-8');
-          result[lang] = JSON.parse(content);
+    // Listen for translate messages
+    this._panel.webview.onDidReceiveMessage(async msg => {
+      if (msg.command === 'translate') {
+        const { key, lang } = msg;
+        const staticTrans = await this.getStaticTranslations();
+        const base = staticTrans['en'][key];
+        try {
+          const result = await this.sdk.localizeText(base, { sourceLocale: 'en', targetLocale: lang });
+          this._panel.webview.postMessage({ command: 'translated', text: result });
+        } catch (e) {
+          console.error('SDK translation error', e);
+          this._panel.webview.postMessage({ command: 'translated', text: 'Error translating via SDK' });
         }
       }
-    } catch (err) {
-      console.error('Error reading translations:', err);
-    }
-
-    return result;
-  }
-
-  public async updatePreview() {
-    const html = await this._getHtmlForWebview();
-    this._panel.webview.html = html;
+    });
   }
 
   public dispose() {
@@ -166,5 +165,10 @@ export class PreviewPanel {
     this._panel.dispose();
     this._disposables.forEach(d => d.dispose());
     this._disposables = [];
+  }
+
+  private _getNonce(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    return Array.from({ length: 32 }).map(_ => chars[Math.floor(Math.random()*chars.length)]).join('');
   }
 }

@@ -1,68 +1,80 @@
 import * as vscode from 'vscode';
-import { SidebarPanel } from './webview/sidebarPanel';
 
 export class StringDiagnosticProvider {
-    private diagnosticCollection: vscode.DiagnosticCollection;
-    private fileStringsMap: Map<string, string[]> = new Map();
+  private diagnosticCollection: vscode.DiagnosticCollection;
+  private fileStringsMap = new Map<string, string[]>();
 
-    constructor() {
-        this.diagnosticCollection = vscode.languages.createDiagnosticCollection('lingoHardcodedStrings');
-        console.log("StringDiagnosticProvider initialized");
+  constructor() {
+    this.diagnosticCollection = vscode.languages.createDiagnosticCollection(
+      'lingoHardcodedStrings'
+    );
+  }
+
+  public activate(context: vscode.ExtensionContext) {
+    context.subscriptions.push(this.diagnosticCollection);
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeTextDocument((e) =>
+        this.refreshDiagnostics(e.document)
+      )
+    );
+    context.subscriptions.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        if (editor) this.refreshDiagnostics(editor.document);
+      })
+    );
+
+    // Refresh diagnostics for currently open editor (if any)
+    if (vscode.window.activeTextEditor) {
+      this.refreshDiagnostics(vscode.window.activeTextEditor.document);
+    }
+  }
+
+  private refreshDiagnostics(document: vscode.TextDocument) {
+    if (
+      document.languageId !== 'typescript' &&
+      document.languageId !== 'javascript'
+    ) {
+      this.diagnosticCollection.delete(document.uri);
+      return;
     }
 
-    public activate(context: vscode.ExtensionContext) {
-        console.log("StringDiagnosticProvider activated");
+    const diagnostics: vscode.Diagnostic[] = [];
+    const stringsInDoc: string[] = [];
 
-        if (vscode.window.activeTextEditor) {
-            this.refreshDiagnostics(vscode.window.activeTextEditor.document);
-        }
+    const text = document.getText();
+    const stringRegex = /(["'`])((?:(?=(\\?))\3.)*?)\1/g;
+    let match: RegExpExecArray | null;
 
-        context.subscriptions.push(
-            vscode.workspace.onDidChangeTextDocument(event => this.refreshDiagnostics(event.document)),
-            vscode.window.onDidChangeActiveTextEditor(editor => {
-                if (editor) this.refreshDiagnostics(editor.document);
-            })
-        );
+    while ((match = stringRegex.exec(text)) !== null) {
+      const literal = match[2];
+      stringsInDoc.push(literal);
+
+      const startPos = document.positionAt(match.index);
+      const endPos = document.positionAt(match.index + match[0].length);
+      const range = new vscode.Range(startPos, endPos);
+
+      const diag = new vscode.Diagnostic(
+        range,
+        'Hardcoded string detected. Consider extracting for localization.',
+        vscode.DiagnosticSeverity.Warning
+      );
+      diag.code = 'lingo.extract'; // custom code
+      diagnostics.push(diag);
     }
 
-    private refreshDiagnostics(document: vscode.TextDocument) {
-        if (!document || (document.languageId !== 'javascript' && document.languageId !== 'typescript')) {
-            return;
-        }
+    this.diagnosticCollection.set(document.uri, diagnostics);
+    this.fileStringsMap.set(document.uri.toString(), stringsInDoc);
 
-        const diagnostics: vscode.Diagnostic[] = [];
-        const stringsInDoc: string[] = [];
-        const text = document.getText();
+    console.log(
+      `StringDiagnosticProvider: ${diagnostics.length} diagnostics in ${document.fileName}`
+    );
+  }
 
-        const stringRegex = /(["'`])((?:(?=(\\?))\3.)*?)\1/g;
-        let match;
-
-        while ((match = stringRegex.exec(text)) !== null) {
-            const startPos = document.positionAt(match.index);
-            const endPos = document.positionAt(match.index + match[0].length);
-
-            const strValue = match[2]; // matched string without quotes
-            stringsInDoc.push(strValue);
-
-            const diagnostic = new vscode.Diagnostic(
-                new vscode.Range(startPos, endPos),
-                "Hardcoded string detected. Consider extracting for localization.",
-                vscode.DiagnosticSeverity.Warning
-            );
-            diagnostics.push(diagnostic);
-        }
-
-        this.diagnosticCollection.set(document.uri, diagnostics);
-        this.fileStringsMap.set(document.uri.toString(), stringsInDoc);
-
-        console.log(`Diagnostics updated for: ${document.fileName}, count: ${diagnostics.length}`);
-
-        // --- Send all strings to the sidebar automatically ---
-        if (SidebarPanel.currentPanel) {
-            SidebarPanel.currentPanel.postMessage({
-                command: 'addMultipleStrings',
-                strings: stringsInDoc
-            });
-        }
-    }
+  // Useful method for other parts (like a "show preview" command) to get all strings
+  public getStringsForDocument(
+    doc: vscode.TextDocument
+  ): string[] | undefined {
+    return this.fileStringsMap.get(doc.uri.toString());
+  }
 }
