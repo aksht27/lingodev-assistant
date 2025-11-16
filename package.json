@@ -105,6 +105,6 @@
     "typescript-eslint": "^8.46.3"
   },
   "dependencies": {
-    "lingo.dev": "^0.115.0"
+    "lingo.dev": "^0.79.5"
   }
 }
