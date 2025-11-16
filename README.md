@@ -1,4 +1,4 @@
-# GlobalDev Assistant
+# LingoDev Assistant
 
 ![VS Code](https://img.shields.io/badge/VS%20Code-%3E%3D1.106.0-blue.svg) ![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![LingoHack25](https://img.shields.io/badge/LingoHack25-WeMakeDevs-orange.svg)
 
@@ -10,7 +10,7 @@ Built for [LingoHack25](https://www.wemakedevs.org/hackathons/lingohack25) • I
 
 Developers hardcode strings, then spend 7-16 hours manually extracting, creating keys, and resolving merge conflicts when adding i18n.
 
-**GlobalDev Assistant automates this in 5-10 minutes.**
+**LingoDev Assistant automates this in 5-10 minutes.**
 
 ## Features
 
@@ -30,7 +30,7 @@ code --install-extension lingodev.lingodev-assistant
 npx lingo.dev@latest init
 
 # 3. Extract strings
-# Select text → Ctrl+Shift+P → "GlobalDev: Extract Selected String"
+# Select text → Ctrl+Shift+P → Open test-workspace folder in "Extensions Development Host"
 ```
 
 **Example:**
